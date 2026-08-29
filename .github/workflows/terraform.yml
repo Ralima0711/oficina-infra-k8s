@@ -13,6 +13,7 @@ env:
   TF_IN_AUTOMATION: "true"
   AWS_DEFAULT_REGION: us-east-1
   CLUSTER_NAME: oficina-mecanica-cluster
+  HAS_AWS: ${{ secrets.AWS_ACCESS_KEY_ID != '' && secrets.AWS_SECRET_ACCESS_KEY != '' }}
 
 jobs:
   plan:
@@ -26,16 +27,8 @@ jobs:
         with:
           terraform_version: "1.9.8"
 
-      - name: Configure AWS credentials
-        uses: aws-actions/configure-aws-credentials@v4
-        with:
-          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
-          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-          aws-session-token: ${{ secrets.AWS_SESSION_TOKEN }}
-          aws-region: us-east-1
-
       - name: Terraform init
-        run: terraform init -input=false
+        run: terraform init -backend=false -input=false
 
       - name: Terraform fmt
         run: terraform fmt -check
@@ -43,12 +36,28 @@ jobs:
       - name: Terraform validate
         run: terraform validate
 
+      - name: Configure AWS credentials
+        if: env.HAS_AWS == 'true'
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-session-token: ${{ secrets.AWS_SESSION_TOKEN }}
+          aws-region: us-east-1
+
       - name: Terraform plan
+        if: env.HAS_AWS == 'true'
         env:
           TF_VAR_lab_role_arn: ${{ secrets.TF_VAR_LAB_ROLE_ARN }}
           TF_VAR_subnet_ids: ${{ secrets.TF_VAR_SUBNET_IDS }}
           TF_VAR_auth_lambda_function_name: ${{ secrets.AUTH_LAMBDA_FUNCTION_NAME }}
         run: terraform plan -input=false -no-color
+
+      - name: Skip plan (sem credenciais AWS)
+        if: env.HAS_AWS != 'true'
+        run: |
+          echo "Plan ignorado: cadastre AWS_ACCESS_KEY_ID e AWS_SECRET_ACCESS_KEY nos secrets do repositório."
+          echo "No AWS Academy, inclua também AWS_SESSION_TOKEN (expira com o lab)."
 
   apply:
     name: Terraform apply e rotas Kong
@@ -66,7 +75,13 @@ jobs:
         with:
           version: "v1.31.0"
 
+      - name: Skip apply (sem credenciais AWS)
+        if: env.HAS_AWS != 'true'
+        run: |
+          echo "Apply ignorado: configure os secrets AWS no repositório."
+
       - name: Configure AWS credentials
+        if: env.HAS_AWS == 'true'
         uses: aws-actions/configure-aws-credentials@v4
         with:
           aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
@@ -75,9 +90,11 @@ jobs:
           aws-region: us-east-1
 
       - name: Terraform init
+        if: env.HAS_AWS == 'true'
         run: terraform init -input=false
 
       - name: Terraform apply
+        if: env.HAS_AWS == 'true'
         env:
           TF_VAR_lab_role_arn: ${{ secrets.TF_VAR_LAB_ROLE_ARN }}
           TF_VAR_subnet_ids: ${{ secrets.TF_VAR_SUBNET_IDS }}
@@ -85,12 +102,15 @@ jobs:
         run: terraform apply -input=false -auto-approve -no-color
 
       - name: Configure kubectl
+        if: env.HAS_AWS == 'true'
         run: aws eks update-kubeconfig --region us-east-1 --name ${{ env.CLUSTER_NAME }}
 
       - name: Wait for Kong
+        if: env.HAS_AWS == 'true'
         run: kubectl wait --namespace kong --for=condition=Available deploy --all --timeout=300s
 
       - name: Apply Kong dummy service e plugin Bearer
+        if: env.HAS_AWS == 'true'
         run: |
           kubectl apply -f k8s/dummy-auth-service.yaml
           kubectl apply -f k8s/plugin-require-bearer.yaml
@@ -98,7 +118,7 @@ jobs:
           kubectl apply -f k8s/ingress-api-public.yaml
 
       - name: Apply rota /auth (Lambda)
-        if: ${{ secrets.AUTH_LAMBDA_FUNCTION_NAME != '' }}
+        if: env.HAS_AWS == 'true' && secrets.AUTH_LAMBDA_FUNCTION_NAME != ''
         run: |
           sed "s/AUTH_LAMBDA_FUNCTION_NAME/${{ secrets.AUTH_LAMBDA_FUNCTION_NAME }}/g" \
             k8s/plugin-aws-lambda.yaml | kubectl apply -f -
