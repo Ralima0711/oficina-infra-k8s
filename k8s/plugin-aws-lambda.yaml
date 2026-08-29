@@ -1,0 +1,17 @@
+# Aplicado pela pipeline quando AUTH_LAMBDA_FUNCTION_NAME estiver definido.
+# O plugin intercepta POST /auth e invoca a Lambda (contrato: rota pública).
+apiVersion: configuration.konghq.com/v1
+kind: KongPlugin
+metadata:
+  name: auth-aws-lambda
+  namespace: default
+plugin: aws-lambda
+config:
+  aws_region: us-east-1
+  function_name: AUTH_LAMBDA_FUNCTION_NAME
+  invocation_type: RequestResponse
+  is_proxy_integration: true
+  forward_request_body: true
+  forward_request_headers: true
+  forward_request_method: true
+  forward_request_uri: true

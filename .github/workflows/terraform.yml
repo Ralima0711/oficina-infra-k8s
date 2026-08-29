@@ -1,0 +1,105 @@
+name: Terraform e Kong CI/CD
+
+on:
+  push:
+    branches: [homolog, main]
+  pull_request:
+    branches: [homolog, main]
+
+permissions:
+  contents: read
+
+env:
+  TF_IN_AUTOMATION: "true"
+  AWS_DEFAULT_REGION: us-east-1
+  CLUSTER_NAME: oficina-mecanica-cluster
+
+jobs:
+  plan:
+    name: Terraform plan
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: "1.9.8"
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-session-token: ${{ secrets.AWS_SESSION_TOKEN }}
+          aws-region: us-east-1
+
+      - name: Terraform init
+        run: terraform init -input=false
+
+      - name: Terraform fmt
+        run: terraform fmt -check
+
+      - name: Terraform validate
+        run: terraform validate
+
+      - name: Terraform plan
+        env:
+          TF_VAR_lab_role_arn: ${{ secrets.TF_VAR_LAB_ROLE_ARN }}
+          TF_VAR_subnet_ids: ${{ secrets.TF_VAR_SUBNET_IDS }}
+          TF_VAR_auth_lambda_function_name: ${{ secrets.AUTH_LAMBDA_FUNCTION_NAME }}
+        run: terraform plan -input=false -no-color
+
+  apply:
+    name: Terraform apply e rotas Kong
+    if: github.event_name == 'push' && (github.ref == 'refs/heads/homolog' || github.ref == 'refs/heads/main')
+    runs-on: ubuntu-latest
+    environment: ${{ github.ref == 'refs/heads/main' && 'production' || 'homolog' }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: "1.9.8"
+
+      - uses: azure/setup-kubectl@v4
+        with:
+          version: "v1.31.0"
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-session-token: ${{ secrets.AWS_SESSION_TOKEN }}
+          aws-region: us-east-1
+
+      - name: Terraform init
+        run: terraform init -input=false
+
+      - name: Terraform apply
+        env:
+          TF_VAR_lab_role_arn: ${{ secrets.TF_VAR_LAB_ROLE_ARN }}
+          TF_VAR_subnet_ids: ${{ secrets.TF_VAR_SUBNET_IDS }}
+          TF_VAR_auth_lambda_function_name: ${{ secrets.AUTH_LAMBDA_FUNCTION_NAME }}
+        run: terraform apply -input=false -auto-approve -no-color
+
+      - name: Configure kubectl
+        run: aws eks update-kubeconfig --region us-east-1 --name ${{ env.CLUSTER_NAME }}
+
+      - name: Wait for Kong
+        run: kubectl wait --namespace kong --for=condition=Available deploy --all --timeout=300s
+
+      - name: Apply Kong dummy service e plugin Bearer
+        run: |
+          kubectl apply -f k8s/dummy-auth-service.yaml
+          kubectl apply -f k8s/plugin-require-bearer.yaml
+          kubectl apply -f k8s/ingress-api.yaml
+          kubectl apply -f k8s/ingress-api-public.yaml
+
+      - name: Apply rota /auth (Lambda)
+        if: ${{ secrets.AUTH_LAMBDA_FUNCTION_NAME != '' }}
+        run: |
+          sed "s/AUTH_LAMBDA_FUNCTION_NAME/${{ secrets.AUTH_LAMBDA_FUNCTION_NAME }}/g" \
+            k8s/plugin-aws-lambda.yaml | kubectl apply -f -
+          kubectl apply -f k8s/ingress-auth.yaml
