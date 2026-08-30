@@ -77,10 +77,6 @@ EKS (pods da API + HPA) ──▶ RDS (repo oficina-infra-database)
 
 ## Monitoramento (New Relic)
 
-A integração com o New Relic tem duas partes com ciclos de vida diferentes — ver
-[Reaplicando após o AWS Academy expirar](#reaplicando-após-o-aws-academy-expirar) antes de
-testar.
-
 ### 1. Bundle no cluster (`newrelic-k8s.tf`, raiz deste repo)
 
 Instala via Helm (`nri-bundle`) o agente de infraestrutura, logging e
@@ -94,9 +90,7 @@ no `terraform.tfvars`.
 
 ### 2. Alertas e dashboard (diretório `newrelic/`)
 
-Módulo Terraform independente (state e pipeline próprios,
-`.github/workflows/newrelic-alerts.yml`, só roda quando arquivos dessa pasta mudam) que cria
-no New Relic:
+Módulo Terraform independente que cria no New Relic:
 
 - policy + condição NRQL que dispara quando aparecem logs de falha no processamento de OS
   (`Falha ao enviar notificação de status da OS` / `Falha ao persistir notificação de sistema
@@ -115,7 +109,7 @@ Relic"). Sem isso a condição NRQL nunca vai encontrar dados.
 cd newrelic
 cp terraform.tfvars.example terraform.tfvars
 # preencher newrelic_account_id e alert_email; newrelic_api_key vem de variável de ambiente
-# (TF_VAR_newrelic_api_key) ou de secret do CI — nunca committar a API key
+# (TF_VAR_newrelic_api_key) ou de secret do CI
 
 terraform init
 terraform plan -out=tfplan
@@ -124,31 +118,7 @@ terraform apply tfplan
 
 Secrets do CI (Settings → Secrets → Actions): `NEWRELIC_API_KEY`, `NEWRELIC_ACCOUNT_ID`,
 `NEWRELIC_ALERT_EMAIL`. Enquanto não forem cadastrados, o workflow roda `plan`/`apply` em modo
-"skip" (mesmo padrão do `terraform-plan/apply` principal sem credenciais AWS).
-
-### Reaplicando após o AWS Academy expirar
-
-O laboratório do AWS Academy é temporário — quando a sessão cai, o cluster EKS e o RDS
-somem (ou as credenciais expiram e é preciso recriar tudo). Nem tudo precisa ser refeito:
-
-| Camada | Onde o recurso vive | Reaplicar quando o lab cai? |
-|---|---|---|
-| `newrelic/` (policy, condição, canal, dashboard) | Conta New Relic, fora da AWS | **Não.** Aplicado uma vez, fica lá. Só reaplica se mudar a definição do alerta/dashboard. |
-| `newrelic-k8s.tf` (bundle Helm + `nri-postgresql`) | Dentro do cluster EKS | **Sim** — é um `helm_release`, some junto com o cluster. Reinstalado automaticamente no próximo `terraform apply` da raiz. |
-| RDS (`oficina-infra-database`) | AWS Academy | **Sim.** E o endpoint (`db_host`) muda se o RDS for recriado — atualizar no `terraform.tfvars` da raiz antes de reaplicar. |
-| EKS + Kong (raiz deste repo) | AWS Academy | **Sim**, mesma lógica. |
-
-Ordem pra retomar o trabalho depois de um reset do lab:
-
-1. Pegar credenciais novas do AWS Academy (`AWS_ACCESS_KEY_ID`/`AWS_SECRET_ACCESS_KEY`/`AWS_SESSION_TOKEN`)
-   e a account ID nova (`aws sts get-caller-identity`) — conferir se `lab_role_arn` no
-   `terraform.tfvars` bate com ela.
-2. `terraform apply` em `oficina-infra-database` → anotar o novo `db_address` (output).
-3. Atualizar `db_host` no `terraform.tfvars` da raiz deste repo com o endpoint novo.
-4. `terraform apply` na raiz — recria EKS + Kong + reinstala o bundle do New Relic
-   (com `nri-postgresql` já apontando pro RDS novo).
-5. **Não** precisa reaplicar `newrelic/` — os alertas e o dashboard continuam intactos na
-   conta New Relic.
+"skip".
 
 ## Regras de contribuição
 
