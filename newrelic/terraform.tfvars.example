@@ -1,0 +1,4 @@
+newrelic_account_id = 1234567
+newrelic_region      = "US"
+alert_email          = "time-oficina@example.com"
+# newrelic_api_key precisa vim do secret do CI/CD (NEWRELIC_API_KEY)

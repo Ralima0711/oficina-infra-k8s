@@ -51,3 +51,35 @@ variable "auth_lambda_function_name" {
   type        = string
   default     = ""
 }
+
+variable "newrelic_license_key" {
+  description = "License key (INGEST - LICENSE) da conta New Relic, usada pelo bundle de infraestrutura/logging instalado no cluster (newrelic-k8s.tf). Vazio = bundle nao e instalado. Vem de secret do CI/CD — nunca versionar."
+  type        = string
+  sensitive   = true
+  default     = ""
+}
+
+variable "db_host" {
+  description = "Host do RDS PostgreSQL (output db_address do repo oficina-infra-database), usado pelo nri-postgresql para o painel de tempo medio de execucao de OS por status. Vazio = integracao nao e criada."
+  type        = string
+  default     = ""
+}
+
+variable "db_username" {
+  description = "Usuario do RDS PostgreSQL usado pelo nri-postgresql"
+  type        = string
+  default     = ""
+}
+
+variable "db_password" {
+  description = "Senha do RDS PostgreSQL usada pelo nri-postgresql"
+  type        = string
+  sensitive   = true
+  default     = ""
+}
+
+variable "db_name" {
+  description = "Nome do banco PostgreSQL"
+  type        = string
+  default     = "oficina_mecanica"
+}

@@ -51,6 +51,7 @@ jobs:
           TF_VAR_lab_role_arn: ${{ secrets.TF_VAR_LAB_ROLE_ARN }}
           TF_VAR_subnet_ids: ${{ secrets.TF_VAR_SUBNET_IDS }}
           TF_VAR_auth_lambda_function_name: ${{ secrets.AUTH_LAMBDA_FUNCTION_NAME }}
+          TF_VAR_newrelic_license_key: ${{ secrets.NEWRELIC_LICENSE_KEY }}
         run: terraform plan -input=false -no-color
 
       - name: Skip plan (sem credenciais AWS)
@@ -99,6 +100,7 @@ jobs:
           TF_VAR_lab_role_arn: ${{ secrets.TF_VAR_LAB_ROLE_ARN }}
           TF_VAR_subnet_ids: ${{ secrets.TF_VAR_SUBNET_IDS }}
           TF_VAR_auth_lambda_function_name: ${{ secrets.AUTH_LAMBDA_FUNCTION_NAME }}
+          TF_VAR_newrelic_license_key: ${{ secrets.NEWRELIC_LICENSE_KEY }}
         run: terraform apply -input=false -auto-approve -no-color
 
       - name: Configure kubectl
