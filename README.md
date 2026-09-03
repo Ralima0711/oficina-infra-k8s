@@ -30,6 +30,8 @@ Este stack (EKS) foi extraído do monorepo da API. O Kong é novo na Fase 3 (con
 | Ingress `/auth` | Público → plugin `aws-lambda` (quando a function existir) |
 | Ingress `/api` | API Laravel (staff continua validando JWT HS256 na aplicação) |
 | Ingress `/api/public` | Rotas de cliente: Kong exige `Authorization: Bearer` |
+| Helm `newrelic/nri-bundle` | Agente de infra + logging + kube-state-metrics do New Relic (namespace `newrelic`); só instala se `newrelic_license_key` estiver preenchida |
+| `nri-postgresql` (integração no bundle) | Query customizada no RDS para o painel de tempo médio de OS por status; só é criada se `db_host`/`db_username`/`db_password` estiverem preenchidos |
 
 O HPA da API permanece em `oficina-mecanica-api/k8s/hpa.yaml`.
 
@@ -55,7 +57,7 @@ kubectl apply -f k8s/ingress-api-public.yaml
 
 O deploy é automatizado via GitHub Actions nas branches `homolog` e `main`.
 
-Secrets: `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`, `AWS_SESSION_TOKEN`, `TF_VAR_LAB_ROLE_ARN`, `TF_VAR_SUBNET_IDS`, opcional `AUTH_LAMBDA_FUNCTION_NAME`.
+Secrets: `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`, `AWS_SESSION_TOKEN`, `TF_VAR_LAB_ROLE_ARN`, `TF_VAR_SUBNET_IDS`, opcional `AUTH_LAMBDA_FUNCTION_NAME`, opcional `NEWRELIC_LICENSE_KEY` (bundle de infra/logging do New Relic — enquanto vazio, esse Helm release simplesmente não é criado), opcionais `TF_VAR_DB_HOST`/`TF_VAR_DB_USERNAME`/`TF_VAR_DB_PASSWORD` (outputs do repo `oficina-infra-database` — enquanto vazios, a integração `nri-postgresql` não é criada).
 
 ## Diagrama
 
@@ -72,6 +74,51 @@ Kong (LoadBalancer no EKS)
       ▼
 EKS (pods da API + HPA) ──▶ RDS (repo oficina-infra-database)
 ```
+
+## Monitoramento (New Relic)
+
+### 1. Bundle no cluster (`newrelic-k8s.tf`, raiz deste repo)
+
+Instala via Helm (`nri-bundle`) o agente de infraestrutura, logging e
+`kube-state-metrics` no cluster, e opcionalmente a integração `nri-postgresql`
+(query customizada no RDS para o painel de tempo médio de OS por status,
+reaproveitando a mesma lógica de
+`EloquentOrdemServicoRepository::tempoMedioExecucao()`, facetada pelos 3 status do
+desafio: `EM_DIAGNOSTICO`, `EM_EXECUCAO`, `FINALIZADA`). Faz parte do `terraform apply`
+principal (raiz) — ver variáveis `newrelic_license_key` e `db_host`/`db_username`/`db_password`
+no `terraform.tfvars`.
+
+### 2. Alertas e dashboard (diretório `newrelic/`)
+
+Módulo Terraform independente que cria no New Relic:
+
+- policy + condição NRQL que dispara quando aparecem logs de falha no processamento de OS
+  (`Falha ao enviar notificação de status da OS` / `Falha ao persistir notificação de sistema
+  da OS`, emitidos por `OrdemServicoService` na API);
+- canal de notificação por e-mail (`alert_email` no `terraform.tfvars` do módulo — é o
+  único uso dessa variável, vira a `property { key = "email" }` do
+  `newrelic_notification_destination`);
+- dashboard "Ordens de Serviço" com volume diário de OS, tempo médio de execução por
+  status (Diagnóstico/Execução/Finalização) e erros/falhas nas integrações.
+
+Pré-requisito: conta New Relic (free tier em [newrelic.com/signup](https://newrelic.com/signup))
+com a aplicação enviando logs (agente PHP / integração Kubernetes — tarefa "Configurar New
+Relic"). Sem isso a condição NRQL nunca vai encontrar dados.
+
+```bash
+cd newrelic
+cp terraform.tfvars.example terraform.tfvars
+# preencher newrelic_account_id e alert_email; newrelic_api_key vem de variável de ambiente
+# (TF_VAR_newrelic_api_key) ou de secret do CI
+
+terraform init
+terraform plan -out=tfplan
+terraform apply tfplan
+```
+
+Secrets do CI (Settings → Secrets → Actions): `NEWRELIC_API_KEY`, `NEWRELIC_ACCOUNT_ID`,
+`NEWRELIC_ALERT_EMAIL`. Enquanto não forem cadastrados, o workflow roda `plan`/`apply` em modo
+"skip".
 
 ## Regras de contribuição
 

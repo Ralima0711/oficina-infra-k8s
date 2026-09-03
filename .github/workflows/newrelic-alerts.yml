@@ -1,0 +1,85 @@
+name: New Relic - Alertas de OS
+
+on:
+  push:
+    branches: [homolog, main]
+    paths:
+      - "newrelic/**"
+  pull_request:
+    branches: [homolog, main]
+    paths:
+      - "newrelic/**"
+
+permissions:
+  contents: read
+
+defaults:
+  run:
+    working-directory: newrelic
+
+env:
+  TF_IN_AUTOMATION: "true"
+  HAS_NEWRELIC: ${{ secrets.NEWRELIC_API_KEY != '' && secrets.NEWRELIC_ACCOUNT_ID != '' }}
+
+jobs:
+  plan:
+    name: Terraform plan
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: "1.9.8"
+
+      - name: Terraform init
+        run: terraform init -backend=false -input=false
+
+      - name: Terraform fmt
+        run: terraform fmt -check
+
+      - name: Terraform validate
+        run: terraform validate
+
+      - name: Terraform plan
+        if: env.HAS_NEWRELIC == 'true'
+        env:
+          TF_VAR_newrelic_account_id: ${{ secrets.NEWRELIC_ACCOUNT_ID }}
+          TF_VAR_newrelic_api_key: ${{ secrets.NEWRELIC_API_KEY }}
+          TF_VAR_alert_email: ${{ secrets.NEWRELIC_ALERT_EMAIL }}
+        run: terraform plan -input=false -no-color
+
+      - name: Skip plan (sem credenciais New Relic)
+        if: env.HAS_NEWRELIC != 'true'
+        run: |
+          echo "Plan ignorado: cadastre NEWRELIC_API_KEY, NEWRELIC_ACCOUNT_ID e NEWRELIC_ALERT_EMAIL nos secrets do repositorio."
+
+  apply:
+    name: Terraform apply
+    if: github.event_name == 'push' && (github.ref == 'refs/heads/homolog' || github.ref == 'refs/heads/main')
+    runs-on: ubuntu-latest
+    environment: ${{ github.ref == 'refs/heads/main' && 'production' || 'homolog' }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: "1.9.8"
+
+      - name: Skip apply (sem credenciais New Relic)
+        if: env.HAS_NEWRELIC != 'true'
+        run: |
+          echo "Apply ignorado: configure os secrets New Relic no repositorio."
+
+      - name: Terraform init
+        if: env.HAS_NEWRELIC == 'true'
+        run: terraform init -input=false
+
+      - name: Terraform apply
+        if: env.HAS_NEWRELIC == 'true'
+        env:
+          TF_VAR_newrelic_account_id: ${{ secrets.NEWRELIC_ACCOUNT_ID }}
+          TF_VAR_newrelic_api_key: ${{ secrets.NEWRELIC_API_KEY }}
+          TF_VAR_alert_email: ${{ secrets.NEWRELIC_ALERT_EMAIL }}
+        run: terraform apply -input=false -auto-approve -no-color
