@@ -1,0 +1,16 @@
+apiVersion: configuration.konghq.com/v1
+kind: KongPlugin
+metadata:
+  name: require-bearer
+  namespace: default
+plugin: pre-function
+config:
+  access:
+    - |
+      local auth = kong.request.get_header("authorization")
+      if not auth then
+        return kong.response.exit(401, { error = "nao_autorizado", message = "Token Bearer obrigatorio." })
+      end
+      if not string.match(string.lower(auth), "^bearer%s+%S+") then
+        return kong.response.exit(401, { error = "nao_autorizado", message = "Token Bearer obrigatorio." })
+      end
