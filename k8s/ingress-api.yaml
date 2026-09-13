@@ -17,3 +17,10 @@ spec:
                 name: oficina-api-service
                 port:
                   number: 80
+          - path: /docs
+            pathType: Prefix
+            backend:
+              service:
+                name: oficina-api-service
+                port:
+                  number: 80

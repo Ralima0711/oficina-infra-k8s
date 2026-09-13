@@ -1,7 +1,13 @@
 aws_region      = "us-east-1"
 cluster_name    = "oficina-mecanica-cluster"
+
+# --- AWS Academy (lab) ---
 lab_role_arn    = "arn:aws:iam::123456789012:role/LabRole"
 subnet_ids      = ["subnet-xxxxxxxx", "subnet-yyyyyyyy"]
+
+# --- Conta AWS pessoal ---
+# create_iam_roles = true
+# use_default_vpc  = true
 # Preencha após o deploy da Lambda (SAM) para o plugin aws-lambda do Kong
 auth_lambda_function_name = ""
 # License key (INGEST - LICENSE) da conta New Relic

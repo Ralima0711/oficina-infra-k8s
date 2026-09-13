@@ -11,13 +11,33 @@ variable "cluster_name" {
 }
 
 variable "lab_role_arn" {
-  description = "ARN da role do AWS Academy Lab (cluster e nodes)"
+  description = "ARN da role do AWS Academy"
   type        = string
+  default     = ""
 }
 
 variable "subnet_ids" {
-  description = "Subnets da VPC do laboratório para o EKS"
+  description = "Subnets do AWS Academy"
   type        = list(string)
+  default     = []
+}
+
+variable "create_iam_roles" {
+  description = "Cria roles IAM (conta pessoal)"
+  type        = bool
+  default     = false
+}
+
+variable "use_default_vpc" {
+  description = "Usa VPC default (conta pessoal)"
+  type        = bool
+  default     = false
+}
+
+variable "eks_excluded_azs" {
+  description = "AZs sem suporte a EKS"
+  type        = list(string)
+  default     = ["us-east-1e"]
 }
 
 variable "node_desired_size" {
