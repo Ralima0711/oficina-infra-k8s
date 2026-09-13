@@ -27,9 +27,11 @@ Este stack (EKS) foi extraído do monorepo da API. O Kong é novo na Fase 3 (con
 | `aws_eks_cluster` | Cluster Kubernetes gerenciado |
 | `aws_eks_node_group` | Node group t3.medium (1–4 nós, desired 2) |
 | Helm `kong/kong` | Proxy LoadBalancer + Ingress Controller |
+| Helm `metrics-server` | Métricas de CPU/memória pro HPA |
 | Ingress `/auth` | Público → plugin `aws-lambda` (quando a function existir) |
 | Ingress `/api` | API Laravel (staff continua validando JWT HS256 na aplicação) |
 | Ingress `/api/public` | Rotas de cliente: Kong exige `Authorization: Bearer` |
+| Ingress `/docs` | Assets do Swagger (fora do prefixo `/api`) |
 | Helm `newrelic/nri-bundle` | Agente de infra + logging + kube-state-metrics do New Relic (namespace `newrelic`); só instala se `newrelic_license_key` estiver preenchida |
 | `nri-postgresql` (integração no bundle) | Query customizada no RDS para o painel de tempo médio de OS por status; só é criada se `db_host`/`db_username`/`db_password` estiverem preenchidos |
 
@@ -55,6 +57,15 @@ kubectl apply -f k8s/ingress-api-public.yaml
 # kubectl apply -f k8s/ingress-auth.yaml
 ```
 
+### Conta AWS pessoal
+
+```bash
+cp terraform.tfvars.example terraform.tfvars
+# comente lab_role_arn/subnet_ids, descomente create_iam_roles/use_default_vpc
+```
+
+Resto do fluxo igual ao bloco acima.
+
 O deploy é automatizado via GitHub Actions nas branches `homolog` e `main`.
 
 Secrets: `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`, `AWS_SESSION_TOKEN`, `TF_VAR_LAB_ROLE_ARN`, `TF_VAR_SUBNET_IDS`, opcional `AUTH_LAMBDA_FUNCTION_NAME`, opcional `NEWRELIC_LICENSE_KEY` (bundle de infra/logging do New Relic — enquanto vazio, esse Helm release simplesmente não é criado), opcionais `TF_VAR_DB_HOST`/`TF_VAR_DB_USERNAME`/`TF_VAR_DB_PASSWORD` (outputs do repo `oficina-infra-database` — enquanto vazios, a integração `nri-postgresql` não é criada).
@@ -69,7 +80,8 @@ Kong (LoadBalancer no EKS)
       ├── POST /auth              → Lambda (pública)
       ├── GET  /api/health        → API (pública)
       ├── /api/public/*           → API (Bearer obrigatório no Kong)
-      └── /api/*                  → API (staff: JWT na Laravel)
+      ├── /api/*                  → API (staff: JWT na Laravel)
+      └── /docs                   → API (assets do Swagger)
       │
       ▼
 EKS (pods da API + HPA) ──▶ RDS (repo oficina-infra-database)
