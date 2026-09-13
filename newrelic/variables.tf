@@ -25,3 +25,9 @@ variable "newrelic_apm_app_name" {
   type        = string
   default     = "oficina-mecanica-api"
 }
+
+variable "health_check_url" {
+  description = "URL publica do healthcheck da API (ex.: https://<host>/api/health). Vazio desativa o monitor de uptime."
+  type        = string
+  default     = ""
+}
