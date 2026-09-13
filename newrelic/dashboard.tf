@@ -67,8 +67,13 @@ resource "newrelic_one_dashboard" "ordens_servico" {
       height = 3
 
       nrql_query {
+        # A aplicacao emite os_transicao_status a cada mudanca de status da OS,
+        # com os.duracao_segundos = tempo que a OS ficou no status anterior --
+        # por isso o FACET e pelo status que terminou.
+        # Se o forwarder aninhar o contexto, o atributo pode chegar como
+        # context.os.duracao_segundos; confirmar na primeira ingestao.
         account_id = var.newrelic_account_id
-        query      = "SELECT average(tempo_medio_minutos) FROM OrdemServicoTempoMedioSample FACET status SINCE 1 hour ago"
+        query      = "SELECT average(numeric(os.duracao_segundos)) / 60 AS 'Minutos' FROM Log WHERE message = 'os_transicao_status' FACET os.status_anterior SINCE 1 day ago"
       }
     }
   }
