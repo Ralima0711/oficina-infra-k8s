@@ -111,6 +111,24 @@ resource "aws_eks_cluster" "oficina" {
   }
 }
 
+# Hop limit 2 no IMDS dos nos. Com o padrao 1, pods fora da rede do host
+# (como o controller do driver EBS) nao alcancam o servico de metadados e nao
+# obtem credenciais: o driver falhava com "get identity". Visto em 15/11.
+resource "aws_launch_template" "oficina_nodes" {
+  name_prefix = "${var.cluster_name}-nodes-"
+
+  metadata_options {
+    http_endpoint               = "enabled"
+    http_tokens                 = "required"
+    http_put_response_hop_limit = 2
+  }
+
+  tags = {
+    Project = "oficina-mecanica"
+    Stack   = "k8s"
+  }
+}
+
 resource "aws_eks_node_group" "oficina_nodes" {
   cluster_name    = aws_eks_cluster.oficina.name
   node_group_name = "${var.cluster_name}-nodes"
@@ -125,6 +143,11 @@ resource "aws_eks_node_group" "oficina_nodes" {
 
   instance_types = var.node_instance_types
 
+  launch_template {
+    id      = aws_launch_template.oficina_nodes.id
+    version = aws_launch_template.oficina_nodes.latest_version
+  }
+
   depends_on = [
     aws_eks_cluster.oficina,
     aws_iam_role_policy_attachment.eks_node_worker,
@@ -135,4 +158,36 @@ resource "aws_eks_node_group" "oficina_nodes" {
     Project = "oficina-mecanica"
     Stack   = "k8s"
   }
+}
+
+# Driver EBS CSI. Sem ele o cluster nao cria volume nenhum: o provisionador
+# antigo kubernetes.io/aws-ebs (da storage class gp2 que vem no EKS) nao
+# funciona mais, e os StatefulSets dos bancos ficavam Pending para sempre.
+resource "aws_eks_addon" "ebs_csi" {
+  cluster_name                = aws_eks_cluster.oficina.name
+  addon_name                  = "aws-ebs-csi-driver"
+  resolve_conflicts_on_create = "OVERWRITE"
+
+  depends_on = [aws_eks_node_group.oficina_nodes]
+}
+
+# Storage class padrao. Os PVCs dos bancos da Fase 4 nao declaram classe, e
+# o EKS nao marca nenhuma como padrao: sem esta, ficam Pending.
+resource "kubernetes_storage_class_v1" "gp3" {
+  metadata {
+    name = "ebs-gp3"
+    annotations = {
+      "storageclass.kubernetes.io/is-default-class" = "true"
+    }
+  }
+
+  storage_provisioner = "ebs.csi.aws.com"
+  volume_binding_mode = "WaitForFirstConsumer"
+  reclaim_policy      = "Delete"
+
+  parameters = {
+    type = "gp3"
+  }
+
+  depends_on = [aws_eks_addon.ebs_csi]
 }

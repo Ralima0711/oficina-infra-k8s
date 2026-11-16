@@ -40,14 +40,16 @@ variable "eks_excluded_azs" {
   default     = ["us-east-1e"]
 }
 
+# 3 nos: a Fase 4 roda ~25 pods (APIs, workers, 5 bancos, RabbitMQ e Kong),
+# e 2 t3.medium nao comportam os requests de CPU.
 variable "node_desired_size" {
   type    = number
-  default = 2
+  default = 3
 }
 
 variable "node_min_size" {
   type    = number
-  default = 1
+  default = 3
 }
 
 variable "node_max_size" {
